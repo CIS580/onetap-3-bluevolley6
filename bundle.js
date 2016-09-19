@@ -3,12 +3,14 @@
 
 /* Classes */
 const Game = require('./game.js');
+const EntityManager = require('./entity-manager.js');
 const Player = require('./player.js');
 const Snake = require('./snake.js');
 
 /* Global variables */
 var canvas = document.getElementById('screen');
 var game = new Game(canvas, update, render);
+var entities = new EntityManager(128);
 var player = new Player({x: 382, y: 440});
 var snakes = [];
 for(var i=0; i < 20; i++) {
@@ -16,8 +18,10 @@ for(var i=0; i < 20; i++) {
     x: Math.random() * 760,
     y: Math.random() * 40 + 100
   }));
+  entities.addEntity(snake);
 }
 snakes.sort(function(s1, s2) {return s1.y - s2.y;});
+
 
 /**
  * @function masterLoop
@@ -43,6 +47,10 @@ function update(elapsedTime) {
   player.update(elapsedTime);
   snakes.forEach(function(snake) { snake.update(elapsedTime);});
   // TODO: Update the game objects
+  entities.collide(function(entity1, entity2) {
+    entity1.color = 'red';
+    entity2.color = 'red';
+  })
 }
 
 /**
@@ -55,11 +63,103 @@ function update(elapsedTime) {
 function render(elapsedTime, ctx) {
   ctx.fillStyle = "lightblue";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  player.render(elapsedTime, ctx);
   snakes.forEach(function(snake){snake.render(elapsedTime, ctx);});
+  player.render(elapsedTime, ctx);
+
 }
 
-},{"./game.js":2,"./player.js":3,"./snake.js":4}],2:[function(require,module,exports){
+},{"./entity-manager.js":2,"./game.js":3,"./player.js":4,"./snake.js":5}],2:[function(require,module,exports){
+module.exports = exports = EntityManager;
+
+function EntityManager(width, height, cellSize) {
+    this.worldWidth = width;
+    this.worldHeight = height;
+    this.cellSize = cellSize;
+    this.widthInCells = Math.ceil(width / cellSize);
+    this.heightInCells = Math.ceil(height / cellSize);
+    this.numberOfCells = this.widthInCells*this.heightInCells;
+    this.cells = [];
+    for(var i = 0; i < this.numberOfCells; i++){
+        this.cells[i] = [];
+    }
+}
+
+function getIndex(x,y) {
+  var x = Math.floor(x / this.cellSize);
+  var y = Math.ceil(y / this.cellSize);
+  var index = y * this.widthInCells + x;
+}
+
+EntityManager.prototype.addEntity = function(entity){
+    getIndex.call(this, x, y);
+    if(!Array.isArray(this.cells[index])) {
+      tis.cells[index] = [];
+    }
+    this.cells[index].push(entity);
+    entity._cell = index;
+}
+
+EntityManager.prototype.updateEntity = function(entity) {
+    var x = Math.floor(entity.x / this.cellSize);
+    var y = Math.ceil((entity.x + entity.width) / this.cellSize);
+    var index = y * this.widthInCells + x;
+    //If we moved to a new cell, remove from old and add to new
+    if(index != entity.cell) {
+      var cellIndex = this.cells[entity._cell].indexOf(entity);
+      if(cellIndex != -1) this.cells[entity._cell].splic(cellIndex, 1);
+      this.cells[index].push(entity);
+      entity._cell = index;
+    }
+}
+
+EntityManager.prototype.removeEntity = function(entity) {
+    var cellIndex = this.cells[entity._cell].indexOf(entity);
+    if(cellIndex != 1) this.cells[entity._cell].splice(cellIndex, 1);
+    entity._cell = undefined;
+}
+
+EntityManager.prototype.collide = function(callback) {
+    var self = this;
+    this.cells.forEach(function(cell, i) {
+      //test for collsisions
+      cell.forEach(function(entity1) {
+        //check for collisions with cellmates
+        cell.forEach(function(entity2) {
+          if(entity1 != entity2) checkForCollision(entity1, entity2, callback);
+          //check for collisons in cell to the right
+          if(i % self.widthInCells-1 != 0) {
+            self.cells[i+1].forEach(function(entity2) {
+              checkForCollision(entity1, entity2, callback);
+            });
+        }
+        //check for collisions in cell below
+        if(i < self.numberOfCells - self.widthInCells) {
+          self.cells[i+self.widthInCells].forEach(function(entity2) {
+            checkForCollision(entity1, entity2, callback);
+          });
+        }
+        //check for collsions diagonally below and right
+        if(i < self.numberOfCells - self.widthInCells && i % (self.widthInCells - 1) != 0) {
+          self.cells[i+self.widthInCells+1].forEach(function(entity2) {
+            checkForCollision(entity1, entity2, callback);
+          });
+        }
+      });
+    });
+  });
+}
+
+function checkForCollision(entity1, entity2, callback) {
+  var collides = !(entity1.x + entity1.width < entity2.x ||
+                   entity1.x > entity2.x + entity2.width ||
+                   entity1.y + entity1.height < entity2.y ||
+                   entity1.y > entity2.y + entity2.height)
+  if(collides) {
+    callback(entity1, entity2);
+  }
+}
+
+},{}],3:[function(require,module,exports){
 "use strict";
 
 /**
@@ -117,7 +217,7 @@ Game.prototype.loop = function(newTime) {
   this.frontCtx.drawImage(this.backBuffer, 0, 0);
 }
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 
 /**
@@ -183,7 +283,7 @@ Player.prototype.render = function(time, ctx) {
   );
 }
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 "use strict";
 
 /**
@@ -234,6 +334,7 @@ Snake.prototype.update = function(elapsedTime) {
       if(this.x > this.rightBound) this.state = "left";
       break;
   }
+  this.color = '#000000';
 }
 
 /**
@@ -261,6 +362,8 @@ Snake.prototype.render = function(time, ctx) {
       this.x, this.y, 2*this.width, 2*this.height
     );
   }
+  ctx.strokeStyle = this.color;
+  ctx.strokeRect(this.x, this.y, this.width, this.height);
 }
 
 },{}]},{},[1]);
